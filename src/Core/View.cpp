@@ -717,7 +717,7 @@ void View::CacheMatchings(const std::vector<Eigen::Vector3d>& world_points,
       double dis_threshold = 1e9;
       for (const auto &candidate : candidates) {
         if (candidate.first != -1 && candidate.second < 2.5) {
-          dis_threshold = std::min(dis_threshold, std::max(candidate.second, 1.0) * 3.0);
+          dis_threshold = std::min(dis_threshold, std::max(candidate.second, 1.0) * 10.0);
         }
       }
       for (const auto &candidate : candidates) {
@@ -1125,6 +1125,23 @@ void View::GetMissingWorldRays(const std::vector<Eigen::Vector3d>& points,
       world_rays->emplace_back(R_.inverse() * ray, 1.0);
     }
   }
+}
+
+void View::UpdateMissingQuadTree() {
+  missing_quad_tree_.release();
+  std::vector<std::vector<int>> missing_paths;
+  GetMissingPaths(&missing_paths);
+  if (missing_paths.empty()) {
+    missing_quad_tree_.reset(nullptr);
+    return;
+  }
+  std::vector<Eigen::Vector2d> missing_points;
+  for (const auto& path : missing_paths) {
+    for (int u : path) {
+      missing_points.emplace_back(extractor_->points_[u]);
+    }
+  }
+  missing_quad_tree_.reset(new QuadTree(missing_points));
 }
 
 void View::GetMissingPaths(std::vector<std::vector<int>>* missing_paths,

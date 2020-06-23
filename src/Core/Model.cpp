@@ -165,15 +165,6 @@ void Model::FeedExtractor(CurveExtractor *extractor) {
   }
   is_tracking_good_ = (track_quality >= 0);
   LOG(INFO) << "Tracking time: " << stop_watch.TimeDuration();
-  // views_.back()->OutDebugImage("last", points_, global_data_pool_);
-
-  // LOG(INFO) << "Core time: " << stop_watch.TimeDuration();
-
-  // new_view->UpdateRTCeres(points_, points_history_);
-
-  // new_view->UpdateRTRobust(points_, points_history_);
-  // new_view->OutDebugImage("debug", points_, true, 10);
-  // new_view->OutDebugImage("last", points_, global_data_pool_);
   last_R_ = new_view->R_;
   last_T_ = new_view->T_;
   view_pools_.emplace_back(new_view);
@@ -187,21 +178,10 @@ void Model::FeedExtractor(CurveExtractor *extractor, const Eigen::Matrix3d &R, c
   auto new_view = new View(extractor, global_view_ticker_, focal_length_);
   new_view->UpdateRT(R, T);
 
-  // TODO: Use global structure.
-  /*UpdateDataStructure();
-  new_view->CacheMatchings(
-      points_, tangs_, tang_scores_, spanning_tree_->Edges(), hope_dist_, true, false);
-
-  // new_view->UpdateRTCeres(points_, points_history_);
-  new_view->UpdateRTRobust(points_, points_history_);*/
   last_R_ = new_view->R_;
   last_T_ = new_view->T_;
-  // LOG(INFO) << "OutDebugImage";
-  // new_view->OutDebugImage("debug", points_, true, 10);
-  // new_view->OutDebugImage("last", points_, global_data_pool_);
   view_pools_.emplace_back(new_view);
   views_.emplace_back(new_view);
-  // LOG(INFO) << "Feed new extractor time: " << stop_watch.TimeDuration();
 }
 
 // global iteration.
@@ -229,8 +209,6 @@ void Model::Update() {
     StopWatch stop_watch;
     last_variance = variance;
     variance = UpdatePoints(false, (Graph*) curve_network_, (Graph*) spanning_tree_);
-    // variance = UpdatePoints(false);
-    // global_data_pool_->UpdatePlottingData({variance / hope_dist_, AveBidirectionProjectionError()});
     LOG(INFO) << "---> UpdatePoints time: " << stop_watch.TimeDuration();
     UpdateTangs();
     LOG(INFO) << "---> UpdateTangs time: " << stop_watch.TimeDuration();
@@ -241,6 +219,9 @@ void Model::Update() {
   }
   global_iter_num_ = 0;
 
+  for (auto& view : views_) {
+    view->UpdateMissingQuadTree();
+  }
   StopWatch stop_watch;
   AdjustPoints((Graph*) curve_network_);
   LOG(INFO) << "---> AdjustPoints time: " << stop_watch.TimeDuration();
@@ -327,8 +308,6 @@ void Model::OutputProcedureMesh() {
       pose_candidates.emplace_back(tmp_views_.back()->R_, tmp_views_.back()->T_);
       current_view->
           Track(pose_candidates, points_, points_history_, tangs_, tang_scores_, curve_network_, spanning_tree_, octree_);
-      // current_view->UpdateRT(tmp_views_.back()->R_, tmp_views_.back()->T_);
-      // current_view->UpdateRTRobust(points_);
       tmp_views_.emplace_back(current_view);
       view_pool_iter++;
       CHECK(view_pool_iter != view_pools_.end());
@@ -503,7 +482,7 @@ void Model::AdjustPoints(Graph* graph) {
   }
 
   LOG(INFO) << "Before removing overlapping duration: " << stop_watch.TimeDuration();
-  // Remove overlapped small curves.
+  // Remove overlapped short curves.
   graph->GetLinkedPaths(points_, &paths, -0.7 , 8);
   if (views_.size() >= 5) {
     for (auto& view : views_) {
@@ -583,18 +562,13 @@ void Model::AdjustPoints(Graph* graph) {
       for (auto& view : views_) {
         double path_len = 0.0;
         double hope_size = 0.0;
-        // Eigen::Vector2d last_projection = view->camera_.World2Image(points_[current_path.front()]);
         Eigen::Vector3d last_point = points_[current_path.front()];
         for (int v : current_path) {
-          // Eigen::Vector2d current_projection = view->camera_.World2Image(points_[v]);
           Eigen::Vector3d current_point = points_[v];
-          // path_len += (current_projection - last_projection).norm();
-          // hope_size += (current_point - last_point).norm() / hope_dist_;
           Eigen::Vector3d current_point_cam = view->camera_.World2Cam(current_point);
           Eigen::Vector3d last_point_cam = view->camera_.World2Cam(last_point);
           path_len += std::abs((last_point_cam - current_point_cam).dot(current_point_cam.normalized()));
           hope_size += (current_point - last_point).norm();
-          // last_projection = current_projection;
           last_point = current_point;
         }
         const double kTooDenseRatioThreashold = 0.9;
@@ -633,25 +607,25 @@ void Model::AdjustPoints(Graph* graph) {
         }
         Eigen::Vector3d bias = tangs_[u];
         CHECK(tang_scores_[u] > 1e-3);
+        
         std::vector<int> neighbors;
         octree_->SearchingR(points_[u], kDirectedSearchingR, &neighbors);
-        bool found = false;
+        bool found_junction = false;
         for (int wooden : neighbors) {
           if ((points_[u] - points_[wooden]).norm() < hope_dist_) {
             continue;
           }
-          found |=
+          found_junction |=
               ((points_[wooden] - points_[u]).normalized().dot(bias) > kCosThres);
-          if (found) {
+          if (found_junction) {
             break;
           }
         }
-        if (!found) {
-          continue;
-        }
-        for (int i = 1; i <= 5; i++) {
+        
+        int max_grow_num = std::max(5, int(path.size() * 0.2));
+        for (int i = 1; i <= max_grow_num; i++) {
           Eigen::Vector3d grow_pt = points_[u] + bias * hope_dist_ * i;
-          if (IsSinglePointFeasible(grow_pt, 1.0, 1.0)) {
+          if (IsSinglePointFeasible(grow_pt, 1.0, 1.0) && (found_junction || IsSinglePointNeeded(grow_pt))) {
             new_points.push_back(grow_pt);
             new_points_history.push_back(-1);
           } else {
@@ -692,7 +666,7 @@ void Model::AdjustPoints(Graph* graph) {
         Eigen::Vector3d step_vector = (points_[b] - points_[a]) / (double) n_segments;
         bool is_path_feasible = (points_history_[a] > 5 && points_history_[b] > 5);
         for (int t = 1; t < n_segments; t++) {
-          if (!IsSinglePointFeasible(points_[a] + step_vector * t, 1.0, 1.0)) {
+          if (!IsSinglePointFeasible(points_[a] + step_vector * t, 1.2, 1.0)) {
             is_path_feasible = false;
             break;
           }
@@ -741,7 +715,7 @@ void Model::AdjustPoints(Graph* graph) {
         Eigen::Vector3d step_vector = (points_[b] - points_[a]) / (double) n_segments;
         bool is_path_feasible = (points_history_[a] > 5 && points_history_[b] > 5);
         for (int t = 1; t < n_segments; t++) {
-          if (!IsSinglePointFeasible(points_[a] + step_vector * t, 1.0, 1.0)) {
+          if (!IsSinglePointFeasible(points_[a] + step_vector * t, 1.2, 1.0)) {
             is_path_feasible = false;
             break;
           }
@@ -781,6 +755,7 @@ bool Model::IsSinglePointFeasible(const Eigen::Vector3d& point, double single_vi
     return false;
   }
 
+  const int kVotingRatio = 6;
   double error = 0.0;
   int false_cnt = 0;
   int in_view_cnt = 0;
@@ -805,7 +780,24 @@ bool Model::IsSinglePointFeasible(const Eigen::Vector3d& point, double single_vi
   }
   error /= views_.size();
 
-  return error < ave_max_error && false_cnt * 6 < in_view_cnt;
+  return error < ave_max_error && false_cnt * kVotingRatio < in_view_cnt;
+}
+
+bool Model::IsSinglePointNeeded(const Eigen::Vector3d& point) {
+  const double kDistanceThreshold = 2.0;
+  const int kNeedViewCntThreshold = 3;
+  int cnt = 0;
+  for (const auto& view : views_) {
+    if (view->missing_quad_tree_.get() == nullptr || view->WorldPointOutImageRange(point)) {
+      continue;
+    }
+    Eigen::Vector2d pt = view->camera_.World2Image(point);
+    Eigen::Vector2d nearest_pt = view->missing_quad_tree_->NearestPoint(pt);
+    if ((pt - nearest_pt).norm() < kDistanceThreshold) {
+      cnt++;
+    }
+  }
+  return (cnt >= kNeedViewCntThreshold);
 }
 
 bool Model::IsSinglePointVisible(const Eigen::Vector3d& point) {
@@ -914,9 +906,7 @@ void Model::AddLostPointsBySearch() {
   // Pls make sure matchings have been cached before calling this function.
   last_view->GetMissingPaths(&missing_paths);
   for (const auto& path : missing_paths) {
-    // LOG(INFO) << "missing path!";
     std::vector<std::vector<double>> depth_candidates;
-    // LOG(INFO) << "path.size(): " << path.size();
     for (int idx : path) {
       Eigen::Vector3d o;
       Eigen::Vector3d v;
@@ -1003,7 +993,6 @@ void Model::GetDepthCandidatesByWorldRay(const Eigen::Vector3d& o,
       out_iter++;
     }
   }
-  // LOG(INFO) << "max_score: " << max_score << " best_depth: " << best_depth;
   if (max_score > 3.0) {
     depth_candidates->emplace_back(best_depth);
   }
@@ -1056,16 +1045,13 @@ void Model::AddLostPointsByDepthSampling() {
         }
       }
 
-      // LOG(FATAL) << d_min << " " << d_max;
       // Sampling and solving.
       const int kSampleN = 20;
       Eigen::Vector3d past_point(1e9, 1e9, 1e9);
       std::vector<Eigen::Vector3d> current_points;
       for (int t = 0; t <= kSampleN; t++) {
-        // double new_d = FindBestDepthByWorldRay(o, v, (d_max - d_min) / kSampleN * t + d_min, d_min, d_max);
         double new_d = (d_max - d_min) / kSampleN * t + d_min;
         Eigen::Vector3d new_point = o + v * new_d;
-        // LOG(INFO) << "d_min: " << d_min << " d_max: " << d_max << " d: " << new_d;
         if (new_d > d_min && new_d < d_max &&
            (past_point - new_point).norm() > hope_dist_ && IsSinglePointFeasible(new_point)) {
           current_points.emplace_back(new_point);
@@ -1115,7 +1101,6 @@ double Model::FindBestDepthByWorldRay(const Eigen::Vector3d& o,
       LOG(INFO) << "Not enough plane.";
       return -1.0;
     }
-    // CHECK_GE(target_planes.size(), 3);
     double a = 0.0;
     double b = 0.0;
     double c = 0.0;
@@ -1223,14 +1208,12 @@ double Model::UpdatePointsSplitAndSolve(bool use_linked_paths, Graph* graph, Gra
   double residual = 0.0;
   std::vector<double> residuals(n_points_);
   for (int i = 0; i < n_points_; i++) {
-    // CHECK(points_base[i] > 0);
     if (!points_base[i]) {
       points_.emplace_back(past_points[i]);
       continue;
     }
     Eigen::Vector3d new_point = new_points[i] / points_base[i];
     points_.emplace_back(new_point);
-    // }
   }
   UpdateTangs(graph);
   for (int i = 0; i < n_points_; i++) {
@@ -1244,8 +1227,6 @@ double Model::UpdatePointsSplitAndSolve(bool use_linked_paths, Graph* graph, Gra
   UpdateOctree();
   std::sort(residuals.begin(), residuals.end());
   return residuals[int(residuals.size() * 0.95)];
-  //
-  // return residual / n_points_;
 }
 
 double Model::UpdatePointsSingleComponent(const std::vector<int>& indexes,
@@ -1254,34 +1235,7 @@ double Model::UpdatePointsSingleComponent(const std::vector<int>& indexes,
   const double kTangWeight = 0.5;
   CHECK(!indexes.empty());
   CHECK_EQ(indexes.size(), solutions->size());
-  // If the path is good enough, don't optimize.
-  /*
-  std::vector<double> path_errors;
-  for (int u : indexes) {
-    std::vector<std::pair<double, View*>> valid_views;
-    GetSinglePointViewWeight(u, &valid_views);
-    double errors = 0.0;
-    for (const auto& pr : valid_views) {
-      View* view = pr.second;
-      if (view->GetMatchingRadius(u) > 0.0) {
-        // if (view->matched_std_dev_[view->matching_indexes_[u]] > 10.0 * hope_dist_) {
-        //   errors.emplace_back(0.0);
-        // } else {
-        errors += pr.first * (view->GetMatchingPixels(u) - view->camera_.World2Image(points_[u])).norm();
-        // }
-      }
-    }
-    path_errors.emplace_back(errors);
-  }
-  CHECK(!path_errors.empty());
-  std::sort(path_errors.begin(), path_errors.end());
-  if (path_errors[path_errors.size() * 90 / 100] < 1.5) {
-    for (int i = 0; i < indexes.size(); i++) {
-      (*solutions)[i] = points_[indexes[i]];
-    }
-    return 0.0;
-  }
-*/
+  
   // If the path has infeasible points, don't optimize.
   bool path_feasible = true;
   for (int u : indexes) {
@@ -1348,8 +1302,6 @@ double Model::UpdatePointsSingleComponent(const std::vector<int>& indexes,
       CHECK(!valid_views.empty());
       for (int view_idx = 0; view_idx < valid_views.size(); view_idx++) {
         const auto &view = valid_views[view_idx].second;
-        // const double current_weight = std::sqrt(valid_views[view_idx].first) * weights[u] *
-        std::max(0.5, std::min(2.0, view->average_depth_ / view->camera_.World2Cam(points_[u])(2)));
         const double current_weight = std::sqrt(valid_views[view_idx].first);
         CHECK(!std::isnan(current_weight));
         CHECK(view->MatchingCached());
@@ -1381,10 +1333,7 @@ double Model::UpdatePointsSingleComponent(const std::vector<int>& indexes,
         Eigen::Vector3d current_tang = current_ray.cross(current_normal);
         current_tang /= current_tang.norm();
 
-        // double tang_weight = std::max(1.0 - tang_scores_[u], 0.5);
-        // const double tang_weight = 0.5;
         const double tang_weight = (i == 0 || i + 1 == indexes.size()) ? 1.0 : kTangWeight;
-        // const double tang_weight = 1.0;
         idx++;
         for (int t = 0; t < 3; t++) {
           AddValue(idx, p_idx + t,
@@ -1417,15 +1366,11 @@ double Model::UpdatePointsSingleComponent(const std::vector<int>& indexes,
             (points_[indexes[i]] - points_[indexes[i + 1]]).dot(points_[indexes[i + 1]] - points_[indexes[i - 1]]));
           ratio = std::max(0.1, std::min(10.0, ratio));
           double base = 2.0 / (1.0 + ratio);
-          // (p[i] - p[i - 1]) - ratio(p[i + 1] - p[i]) == 0
           for (int t = 0; t < 3; t++) {
             idx++;
             AddValue(idx, i * 3 + t, -(1.0 + ratio) * hope_dist_weight_ * base);
             AddValue(idx, (i - 1) * 3 + t, 1.0 * hope_dist_weight_ * base);
             AddValue(idx, (i + 1) * 3 + t, ratio * hope_dist_weight_ * base);
-            // AddValue(idx, i * 3 + t, -2.0 * hope_dist_weight_);
-            // AddValue(idx, (i - 1) * 3 + t, hope_dist_weight_);
-            // AddValue(idx, (i + 1) * 3 + t, hope_dist_weight_);
             B.push_back(0.0);
           }
         }
@@ -1476,12 +1421,9 @@ double Model::UpdatePointsSingleComponent(const std::vector<int>& indexes,
         }
       }
     }
-    // LOG(INFO) << "before solving.";
-    // LOG(INFO) << "n_varaibles: " << indexes.size() * 3 << "n_functions: " << B.size();
     if (indexes.size() * 3 <= B.size()) {
       Utils::SolveLinearSqrLSQR((int) B.size(), indexes.size() * 3, coord_r, coord_c, values, B, solution);
     }
-    // LOG(INFO) << "after solving.";
   }
   else if (use_ceres_solver) { // use ceres solver.
     ceres::Problem problem;
@@ -1497,8 +1439,6 @@ double Model::UpdatePointsSingleComponent(const std::vector<int>& indexes,
         return 0.0;
       }
       CHECK(!valid_views.empty());
-      // std::random_shuffle(valid_views.begin(), valid_views.end());
-      // valid_views.resize(std::min((int) valid_views.size(), 5));
       double w_sum = 0.0;
       for (const auto& pr : valid_views) {
         w_sum += pr.first;
@@ -1517,7 +1457,6 @@ double Model::UpdatePointsSingleComponent(const std::vector<int>& indexes,
         Eigen::Vector2d matching_v = view->extractor_->tangs_[view_matching_idx];
         double tang_score = view->extractor_->tang_scores_[view_matching_idx];
         const double tang_weight = (i == 0 || i + 1 == indexes.size() || tang_score < 0.90) ? 1.0 : kTangWeight;
-        // const double tang_weight = kTangWeight;
         ceres::CostFunction* cost_function =
           ModelToViewError::Create(view->R_,
                                    view->T_,
@@ -1536,11 +1475,6 @@ double Model::UpdatePointsSingleComponent(const std::vector<int>& indexes,
 
     // Smoothness.
     for (int i = 1; i + 1 < indexes.size(); i++) {
-      // double ratio = std::abs(
-      //   (points_[indexes[i]] - points_[indexes[i - 1]]).dot(points_[indexes[i + 1]] - points_[indexes[i - 1]]) /
-      //   (points_[indexes[i]] - points_[indexes[i + 1]]).dot(points_[indexes[i + 1]] - points_[indexes[i - 1]]));
-      // ratio = std::max(0.1, std::min(10.0, ratio));
-      // double base = 2.0 / (1.0 + ratio);
       // (p[i] - p[i - 1]) - ratio(p[i + 1] - p[i]) == 0
       for (int t = 0; t < 3; t++) {
         idx++;
@@ -1561,7 +1495,6 @@ double Model::UpdatePointsSingleComponent(const std::vector<int>& indexes,
       std::vector<double> shrink_scale_weights(indexes.size());
       double weight_sum = 0.0;
       for (int i = 0; i + 1 < indexes.size(); i++) {
-        // double w = 1.0 / (points_[indexes[i]] - points_[indexes[i + 1]]).norm();
         double w = 1.0;
         shrink_scale_weights[i] = w;
         weight_sum += w;
@@ -1600,7 +1533,6 @@ double Model::UpdatePointsSingleComponent(const std::vector<int>& indexes,
     // double solve_duration = stop_watch.TimeDuration();
   }
   else {
-    // LOG(FATAL) << "here.";
     std::vector<Eigen::Vector3d> initial_points;
     std::vector<double> errors;
     for (int idx : indexes) {
@@ -1623,7 +1555,6 @@ double Model::UpdatePointsSingleComponent(const std::vector<int>& indexes,
     }
     CHECK_EQ(errors.size(), initial_points.size());
     auto curve = std::make_unique<BezierCurve>(initial_points, errors, 2.0, hope_dist_);
-    // LOG(INFO) << "Compression ratio: " << curve->points_p_.size() / double(initial_points.size());
     std::vector<double> p_solutions(curve->points_p_.size() * 3, 0.0);
     std::vector<double> t_solutions(curve->points_t_.size() * 3, 0.0);
     for (int i = 0; i < curve->points_p_.size(); i++) {
@@ -1639,17 +1570,6 @@ double Model::UpdatePointsSingleComponent(const std::vector<int>& indexes,
 
     ceres::Problem problem;
     CHECK_EQ(indexes.size(), curve->expressions_.size());
-    // For debugging
-    /*
-    for (int i = 0; i < indexes.size(); i++) {
-      LOG(INFO) << "----";
-      LOG(INFO) << points_[indexes[i]].transpose();
-      LOG(INFO) << curve->points_p_[i].transpose();
-      LOG(INFO) << curve->points_t_[curve->expressions_[i].t_idx_].transpose();
-      LOG(INFO) << curve->expressions_[i].p0_idx_ << " " << curve->expressions_[i].p1_idx_;
-      LOG(INFO) << curve->expressions_[i].t_;
-    }*/
-    // LOG(INFO) << "r: " << double(curve->points_p_.size() + curve->points_t_.size()) / indexes.size();
     const double kStepLen = 5e-1;
     double past_t = -kStepLen - 1e-3;
     double true_past_t = -1.0;
@@ -1869,8 +1789,6 @@ void Model::Update3DRadius(double extend_2d_radius) {
           double radius_w = view->matching_radius_[u] * cam_p[2] / focal_length;
           std::pair<double, double> pr;
           pr.first = radius_w;
-          // LOG(INFO) << "..." << view->matched_std_dev_[view->matching_indexes_[u]] / hope_dist_;
-          // LOG(INFO) << "+++" << (view->matching_pixels_[u] - view->camera_.World2Image(points_[u])).norm();
           pr.second = std::exp(-view->matched_std_dev_[view->matching_indexes_[u]] / hope_dist_) *
                       std::exp(-(view->matching_pixels_[u] - view->camera_.World2Image(points_[u])).norm());
           radius_scores.emplace_back(pr);
@@ -1891,9 +1809,7 @@ void Model::Update3DRadius(double extend_2d_radius) {
         weight_sum += pr.second;
         estimated_radius += pr.first * pr.second;
       }  
-      // points_radius_3d_[u] = std::accumulate(tmp_radius.begin(), tmp_radius.end(), 0.0) / tmp_radius.size();
       points_radius_3d_[u] = estimated_radius / weight_sum;
-      // LOG(INFO) << estimated_radius / weight_sum;
     }
   }
 }
@@ -1942,13 +1858,8 @@ void Model::RadiusSmoothing(Graph* graph) {
   // Data term.
   for (int u = 0; u < n_points_; u++) {
     idx++;
-    // if (graph->Degree(u) > 2) {
-    //   AddValue(idx, u, 1e2);
-    //   B.push_back(points_radius_3d_[u] * 1e2);
-    // } else {
     AddValue(idx, u, 1.0);
     B.push_back(points_radius_3d_[u]);
-    // }
   }
   // Smoothness term.
   const double smoothing_weight = radius_smoothing_weight_ < -1e-5 ? 1e3 : radius_smoothing_weight_;
@@ -2014,13 +1925,9 @@ void Model::GetSinglePointViewWeight(int pt_idx,
       if (view->matching_indexes_[pt_idx] == -1) {
         continue;
       }
-      // double std_dev = view->matched_std_dev_[view->matching_indexes_[pt_idx]];
-      // if (std_dev < 5.0 * hope_dist_) {
-      // if (!view->is_world_point_self_occluded_[pt_idx]) {
       if (!view->is_self_occluded_[view->matching_indexes_[pt_idx]]) {
         weighted_views->emplace_back(1.0, view);
       }
-      // LOG(INFO) << "ratio: " << weighted_views->size() / double(views_.size());
     }
     if (weighted_views->size() < 3) {
       current_tp = ViewWeightDistributionType::STD_DEV;
@@ -2042,9 +1949,6 @@ void Model::GetSinglePointViewWeight(int pt_idx,
       if (view->matching_indexes_[pt_idx] == -1) {
         continue;
       }
-      // double std_dev = view->matched_std_dev_[view->matching_indexes_[pt_idx]];
-      // CHECK_LT(view->matching_indexes_[pt_idx], view->matched_std_dev_.size());
-      // CHECK_GE(view->matching_indexes_[pt_idx], 0);
       double current_std_dev = std::max(view->matched_std_dev_[view->matching_indexes_[pt_idx]], hope_dist_);
       double sigma = (3.0 * hope_dist_);
       double weight = std::exp(-(current_std_dev * current_std_dev / (2 * sigma * sigma)));
@@ -2054,7 +1958,6 @@ void Model::GetSinglePointViewWeight(int pt_idx,
     }
     if (std_devs.size() > 3) {
       std::sort(std_devs.begin(), std_devs.end());
-      // double base_std_dev = std::max(hope_dist_, std_devs[std_devs.size() / 3]);
       for (const auto& view : views_) {
         if (view->matching_indexes_[pt_idx] == -1) {
           continue;
@@ -2064,9 +1967,6 @@ void Model::GetSinglePointViewWeight(int pt_idx,
         double current_std_dev = std::max(view->matched_std_dev_[view->matching_indexes_[pt_idx]], hope_dist_);
         double sigma = (3.0 * hope_dist_);
         double weight = std::exp(-(current_std_dev * current_std_dev / (2 * sigma * sigma)));
-        // if (current_std_dev > hope_dist_ + 1e-7) {
-        //   LOG(INFO) << current_std_dev << " " << hope_dist_ << " weight: " << weight;
-        // }
         if (weight > 1e-7 && !std::isnan(weight) && current_std_dev < 10.0 * hope_dist_) {
           weighted_views->emplace_back(weight, view);
         }
@@ -2113,9 +2013,6 @@ double Model::GetSinglePoint3dRadius(int pt_idx) {
     View* view = pr.second;
     Eigen::Vector3d cam_p = view->camera_.World2Cam(points_[pt_idx]);
     double focal_length = (view->camera_.GetFocalLengthX() + view->camera_.GetFocalLengthY()) / 2;
-    // double radius_2d = final_refine ?
-    //     view->extractor_->RadiusAt(view->camera_.World2Image(points_[u])(0), view->camera_.World2Image(points_[u])(1)) :
-    //     view->matching_radius_[u];
     double radius_2d = view->matching_radius_[pt_idx];
     double radius_w = radius_2d * cam_p[2] / focal_length;
     r += radius_w * pr.first;
@@ -2603,6 +2500,7 @@ IronTown* Model::RadiusBasedMergeJunction() {
   std::vector<int> maps(n_points_, -1);
   int new_n_points = 0;
   std::vector<Eigen::Vector3d> new_points;
+  std::vector<int> new_points_history;
   std::vector<double> new_radius;
 
   // Recover
@@ -2667,6 +2565,7 @@ IronTown* Model::RadiusBasedMergeJunction() {
       CHECK_EQ(FindRoot(u), u);
       maps[u] = new_n_points++;
       new_points.emplace_back(points_[u]);
+      new_points_history.emplace_back(points_history_[u]);
       new_radius.emplace_back(points_radius_3d_[u]);
     }
   }
@@ -2683,6 +2582,7 @@ IronTown* Model::RadiusBasedMergeJunction() {
     if (outs[u].size() <= 2) {
       maps[u] = new_n_points++;
       new_points.emplace_back(points_[u]);
+      new_points_history.emplace_back(points_history_[u]);
       new_radius.emplace_back(points_radius_3d_[u]);
       new_edges.emplace_back();
       continue;
@@ -2763,6 +2663,7 @@ IronTown* Model::RadiusBasedMergeJunction() {
     maps[u] = new_n_points++;
     new_edges.emplace_back();
     new_points.emplace_back(new_u);
+    new_points_history.emplace_back(points_history_[u]);
     new_radius.emplace_back(dense_junction ? -1.0 : -2.0); // Current radius is unavalible.
     
     for (const auto& pr : outs[u]) {
@@ -2774,6 +2675,7 @@ IronTown* Model::RadiusBasedMergeJunction() {
       double t_step = (o - new_u).norm() / sampling_n;
       for (int i = 1; i < sampling_n; i++) {
         new_points.emplace_back(new_u + t_step * i * vec);
+        new_points_history.emplace_back(points_history_[u]);
         new_radius.emplace_back(dense_junction ? -1.0 : -2.0); // Current radius is unavalible.
         new_n_points++;
         new_edges.emplace_back();
@@ -2795,6 +2697,7 @@ IronTown* Model::RadiusBasedMergeJunction() {
       maps[u] = new_n_points++;
       outs[u].clear();
       new_points.emplace_back(points_[u]);
+      new_points_history.emplace_back(points_history_[u]);
       new_radius.emplace_back(points_radius_3d_[u]);
       new_edges.emplace_back();
     }
@@ -2807,8 +2710,10 @@ IronTown* Model::RadiusBasedMergeJunction() {
   
   CHECK_EQ(new_n_points, new_edges.size());
   CHECK_EQ(new_n_points, new_points.size());
+  CHECK_EQ(new_n_points, new_points_history.size());
   CHECK_EQ(new_points.size(), new_radius.size());
   points_ = std::move(new_points);
+  points_history_ = std::move(new_points_history);
   points_radius_3d_ = std::move(new_radius);
   n_points_ = points_.size();
   UpdateOctree();
@@ -3065,6 +2970,7 @@ void Model::RefinePoints() {
 
   UpdateDataStructure();
   UpdatePoints(true, curve_network_, spanning_tree_);
+  AdjustPoints(curve_network_);
 
   Update3DRadius();
   LOG(INFO) << "Refine time duration: " << stop_watch.TimeDuration();

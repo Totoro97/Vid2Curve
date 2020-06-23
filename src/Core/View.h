@@ -96,6 +96,7 @@ public:
   double CalcBidirectionProjectionError(const std::vector<Eigen::Vector3d> &points);
   double CalcIOU(const std::vector<Eigen::Vector3d> &points);
 
+  void UpdateMissingQuadTree();
   void GetMissingWorldRays(const std::vector<Eigen::Vector3d>& points,
                            std::vector<std::pair<Eigen::Vector3d, double>>* world_rays);
   void GetMissingPaths(std::vector<std::vector<int>>* missing_paths,
@@ -132,6 +133,7 @@ public:
   // std::unique_ptr<IcpPointToPlane> icp_;
   std::unique_ptr<ICP> icp_;
   std::unique_ptr<QuadTree> quad_tree_;
+  std::unique_ptr<QuadTree> missing_quad_tree_;
   std::unique_ptr<SegmentQuadTree> segment_quad_tree_;
   CurveExtractor *extractor_;
   Camera camera_;

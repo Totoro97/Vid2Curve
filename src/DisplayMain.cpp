@@ -14,12 +14,6 @@
 #include "Utils/Common.h"
 #include "Utils/GlobalDataPool.h"
 
-void setImageData(unsigned char * imageArray, int size) {
-  for(int i = 0 ; i < size;i++) {
-    imageArray[i] = (unsigned char)(rand()/(RAND_MAX/255.0));
-  }
-}
-
 int main(int argc, char* argv[]) {
   google::InitGoogleLogging(argv[0]);
   FLAGS_logtostderr = true;

@@ -87,8 +87,8 @@ public:
   bool IsCameraMovementSufficient();
   bool IsCameraMotionSimilar(Model* ano_model);
   bool IsSinglePointFeasible(const Eigen::Vector3d& point,
-                             double single_view_max_error = 1.5,
-                             double ave_max_error = 1.2);
+                             double single_view_max_error = 2.0,
+                             double ave_max_error = 1.5);
   bool IsSinglePointVisible(const Eigen::Vector3d& point);
   // Before using this fuction, pls make sure hitmap of each view has been refreshed.
   bool IsSinglePointNeeded(const Eigen::Vector3d& point);

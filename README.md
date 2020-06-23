@@ -4,7 +4,7 @@
 
 ![](./static/teaser.png)
 
-This is the implementation for thin structure reconstruction from an image sequence.
+This is the reference implementation for thin structure reconstruction from an image sequence.
 
 ## Dependency
 
@@ -46,7 +46,7 @@ make Display
 
 At the `build` directory, run command `./Display` .
 
-In the `config.ini` file, you can set the `DataPath` field for your own use and test.
+In the `config.ini` file, you can modify the `DataPath` field for your own use and test.
 
 The mesh and the curve skeleton will be saved as `curves_mesh.obj` and `curves.obj` at the `build` directory after the reconstruction process is done. And the camera poses will be saved at `cameras.txt` as rotation matrix and translation vectors (from world to camera).
 
@@ -60,8 +60,8 @@ If you would like to use the project for reconstruction of your own thin objects
   - 💡The project doesn't provide image distortion function, thus the input images should be undistorted in advance.
   - 💡It is hoped that images are captured from different view angles, to gain better reconstruction quality.
   - 💡Since the initialization step is rather important, the first several frames are hoped to have as few self-occlusions as possible.
-  - 💡The recommended resolution of in the input images is between `500x500` and `1000x1000`.
-- Create a `local_config.ini` file that indicates the internal parameters of the camera and some other informations (as the examples show).
+  - 💡The recommended resolution of the input images is between `500x500` and `1000x1000`.
+- Create a `local_config.ini` file that indicates the internal parameters of the camera and some other information (as the examples show).
 
 ## Citation
 

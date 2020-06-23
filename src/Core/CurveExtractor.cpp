@@ -210,7 +210,6 @@ void CurveExtractor::RunPcaConsideringColor(StreamerBase* streamer) {
     }
 
     cv::imwrite("debug.png", debug_img);
-    // cv::waitKey(-1);
     LOG(FATAL) << "Crash here.";
   }
   else {
@@ -271,12 +270,6 @@ void CurveExtractor::RunPca(int trunc_r, double r) {
       Eigen::Vector2d v0, v1;
       CalcEigens(M, l0, l1, v0, v1);
       double score = l0 * l0 / (l0 * l0 + l1 * l1);
-      // std::swap(v0, v1);
-      // LOG(INFO) << "score: " << score;
-      // std::cout << score << std::endl;
-      // For debug.
-      // std::cout << (int) img.data[x * width_ + y] << std::endl;
-      // Only for debug.
       if (score < 0.1 || std::isnan(score)) {
         continue;
       }
@@ -285,46 +278,12 @@ void CurveExtractor::RunPca(int trunc_r, double r) {
       tang_scores_.emplace_back(score);
       candi_points_.emplace_back(Eigen::Vector2d(x, y), v0 / v0.norm(), score);
 
-      // Debug.
-      // img.data[x * width_ + y] = (int) (255.0 * (1.0 - score));
-      if (false) {
-        img.data[x * width_ + y] = (int) (255.0 * l1 * l1 / (l0 * l0 + l1 * l1));
-        cv::Mat tmp_img((trunc_r * 2 + 1) * 20, (trunc_r * 2 + 1) * 20, CV_8UC3);
-        for (int a = x - trunc_r; a <= x + trunc_r; a++) {
-          for (int b = y - trunc_r; b <= y + trunc_r; b++) {
-            int val = (int) (255.0 * p_ptr[a * width_ + b]);
-            int u = a - (x - trunc_r);
-            int v = b - (y - trunc_r);
-            cv::rectangle(
-              tmp_img,
-              cv::Point(v * 20, u * 20),
-              cv::Point(v * 20 + 19, u * 20 + 19),
-              cv::Scalar(val, val, val),
-              -1);
-          }
-        }
-        v0 /= v0.norm();
-        cv::line(
-          tmp_img,
-          cv::Point((0.5 + trunc_r - v0(1) * trunc_r) * 20, (0.5 + trunc_r - v0(0) * trunc_r) * 20),
-          cv::Point((0.5 + trunc_r + v0(1) * trunc_r) * 20, (0.5 + trunc_r + v0(0) * trunc_r) * 20),
-          cv::Scalar(255, 255, 0),
-          2);
-        cv::imshow("tmp", tmp_img);
-        cv::waitKey(-1);
-      }
     }
   }
 
   n_points_ = points_.size();
   CHECK_EQ(n_points_, tangs_.size());
   CHECK_EQ(n_points_, candi_points_.size());
-
-  // std::cout << candidate_cnt << std::endl;
-  // cv::imwrite("tmp.png", img);
-  // cv::imshow("tmp", img);
-  // cv::waitKey(-1);
-  // SmoothPoints();
 
   // assign index.
   for (int i = 0; i < n_points_; i++) {
@@ -361,12 +320,6 @@ void CurveExtractor::RunPcaGPU(int trunc_r, double r) {
   CHECK_EQ(n_points_, tangs_.size());
   CHECK_EQ(n_points_, candi_points_.size());
 
-  // std::cout << candidate_cnt << std::endl;
-  // cv::imwrite("tmp.png", img);
-  // cv::imshow("tmp", img);
-  // cv::waitKey(-1);
-  // SmoothPoints();
-  // assign index.
   for (int i = 0; i < n_points_; i++) {
     candi_points_[i].idx = i;
   }
@@ -469,8 +422,6 @@ void CurveExtractor::RunGradientBasedExtraction(StreamerBase* streamer) {
   cv::imwrite("clustered.png", debug_img);
   std::exit(0);
 
-  // debug.
-  // cv::imwrite("grad_points.png", debug_img);
 }
 
 void CurveExtractor::FindNearestPointsOffline(const std::vector<Eigen::Vector2d> &query_points,
@@ -598,37 +549,6 @@ void CurveExtractor::SmoothPoints() {
           AddValue(idx, b * 2 + t, -smooth_weight);
           B.push_back(0.0);
         }
-        // Deprecated.
-        /*
-        const double tang_weight = 10.0;
-        AddValue(idx, u * 2 + 0, tangs_[u](0) * tang_weight);
-        AddValue(idx, u * 2 + 1, tangs_[u](1) * tang_weight);
-        B.push_back(points_[u].dot(tangs_[u]) * tang_weight);
-
-        idx++;
-        const double nor_weight = 10.0;
-        AddValue(idx, u * 2 + 0, tangs_[u](1) * nor_weight);
-        AddValue(idx, u * 2 + 1, -tangs_[u](0) * nor_weight);
-        B.push_back((points_[u](0) * tangs_[u](1) - points_[u](1) * tangs_[u](0)) * nor_weight);
-
-        const double smooth_weight = 10.0;
-        // (u - v).cross(t) = 0.
-        for (const auto &neighbor : std::vector<std::pair<double, int> >{neighbor_0, neighbor_1}) {
-          int v = neighbor.second;
-          if (v == -1) {
-            continue;
-          }
-          Eigen::Vector2d bias = points_[v] - points_[u];
-          auto hope_bias = bias.dot(tangs_[u]) * tangs_[u];
-          Eigen::Vector2d nor(tangs_[u](1), -tangs_[u](0));
-          idx++;
-          for (int t = 0; t < 2; t++) {
-            AddValue(idx, u * 2 + t, -smooth_weight * tang_scores_[u] * nor(t));
-            AddValue(idx, v * 2 + t, smooth_weight * tang_scores_[u] * nor(t));
-          }
-          B.push_back(0.0);
-        }
-         */
       }
     }
     std::vector<double> solution(points_.size() * 2, 0.0);

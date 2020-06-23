@@ -51,14 +51,7 @@ public:
   CurveMatcher(int height, int width, double *prob_map_0, double *prob_map_1);
   CurveMatcher(CurveExtractor *extractor_0,
                CurveExtractor *extractor_1);
-  // Deprecated.
-  // CurveMatcher(cv::Mat *img_0, cv::Mat *img_1);
   ~CurveMatcher();
-
-  // Deprecated. Use curve extractor.
-  // GetCurves:
-  // Input: mat: single channel, 255 -> curve, 0 -> background.
-  // void GetCurves(const cv::Mat &mat, std::vector<Noke::Curve2d *> &curves);
 
   void FindLocalCurveMatching(std::vector<std::pair<Eigen::Vector2d, Eigen::Vector2d>>& matchings);
   std::pair<Eigen::Vector2d, double> FindMatching(Eigen::Vector2d pix);
@@ -69,8 +62,6 @@ public:
                      bool show_debug_message = false);
   void FindMatchingsByOpticalFlow(std::vector<ImageLocalMatching>* matchings);
   void FindMatchingsByDP(std::vector<ImageLocalMatching>* matchings);
-  // void CalcRays(CandiCurve *candi_curve);
-  // void CalcRaysGlobal(CandiCurve *candi_curve);
   bool ValidateCandiCurves();
 
   void ShowDebugInfo();

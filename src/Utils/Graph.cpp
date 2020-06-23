@@ -422,7 +422,7 @@ IronTown::IronTown(const std::vector<Eigen::Vector3d>& points,
     std::vector<std::pair<int, int>> que;
     vis[a] = ++timestamp;
     que.emplace_back(a, 0);
-    const int kPathLengthThreshold = std::max(20, (int) std::round(a_to_b.norm() / hope_dist_ * 4.0));
+    const int kPathLengthThreshold = std::max(20, (int) std::round(a_to_b.norm() / hope_dist_ * 6.0));
     int L = 0;
     bool found = false;
     while (que.back().second < kPathLengthThreshold && !found) {

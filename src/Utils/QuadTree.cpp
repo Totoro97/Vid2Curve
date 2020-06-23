@@ -115,21 +115,11 @@ QuadTreeNode* QuadTree::BuildTreeNode(const Eigen::Vector2d& corner, double r, i
   return u;
 }
 
+Eigen::Vector2d QuadTree::NearestPoint(const Eigen::Vector2d& point) {
+  return points_[NearestIdx(point)];
+}
+
 int QuadTree::NearestIdx(const Eigen::Vector2d& point) {
-  /*
-  double dis = 1e9;
-  int ret = -1;
-  for (int i = 0; i < n_points_; i++) {
-    if (dis > (point - points_[i]).norm()) {
-      dis = (point - points_[i]).norm();
-      ret = i;
-    }
-  }
-  return ret;
-  */
-  // CHECK_LT((points_[idx] - point).norm(), dis + 1e-6) << idx << " " << ret << " "
-  //    << points_[idx].transpose() << " " << points_[ret].transpose() << " " << point.transpose();
-  // CHECK_EQ(ret, NearestIdx(root_, point, 1e9));
   int idx = NearestIdx(root_, point, 1e9);
   return idx;
 }

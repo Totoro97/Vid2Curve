@@ -88,8 +88,6 @@ public:
   int id_ = -1;
   PropertyTree* ptree_;
 
-  // Deprecated.
-  // std::vector<Noke::Curve2d*> curves_;
 };
 
 // ------------------------ Declaration for GPU methods ----------------------
