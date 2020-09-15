@@ -8,10 +8,6 @@ set(CMAKE_BUILD_TYPE Release)
 find_package(Ceres REQUIRED)
 include_directories(${CERES_INCLUDE_DIRS})
 
-# glog
-# find_package(glog REQUIRED)
-# include_directories(${GLOG_INCLUDE_DIRS})
-
 # OpenCV
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
@@ -21,12 +17,13 @@ find_package(OpenMP)
 message(STATUS "OpenMP flags = ${OpenMP_CXX_FLAGS}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+include_directories(${OpenMP_C_INCLUDE_DIRS})
 
 # Eigen
 find_package(Eigen3)
 include_directories(${Eigen3_INCLUDE_DIRS})
 
-set(ALL_LIBS glog gomp ${OpenCV_LIBS} ${CERES_LIBRARIES} ${Pangolin_LIBRARIES})
+set(ALL_LIBS ${OpenMP_libomp_LIBRARY} ${OpenCV_LIBS} ${CERES_LIBRARIES} ${Pangolin_LIBRARIES})
 
 # Pangolin
 if(DEFINED USE_GUI)

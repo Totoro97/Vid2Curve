@@ -53,3 +53,6 @@ cmake-build-debug
 
 # ThirdParty
 ThirdParty
+
+# macOS
+.DS_Store

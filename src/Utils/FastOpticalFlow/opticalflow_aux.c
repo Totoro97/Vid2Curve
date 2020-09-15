@@ -1,6 +1,6 @@
 #include <stdlib.h>
 #include <math.h>
-#include <malloc.h>
+#include <stdlib.h>
 #include <string.h>
 #include "opticalflow_aux.h"
 
@@ -140,7 +140,8 @@ void compute_smoothness(image_t *dst_horiz, image_t *dst_vert, const image_t *uu
     image_delete(ux); image_delete(uy); image_delete(vx); image_delete(vy); 
     // compute dst_horiz
     v4sf *dsthp = (v4sf*) dst_horiz->c1; sp = (v4sf*) smoothness->c1;
-    float *sp_shift = (float*) memalign(16, stride*sizeof(float)); // aligned shifted copy of the current line
+    float *sp_shift;
+    int res = posix_memalign((void **) &sp_shift, 16, stride*sizeof(float)); // aligned shifted copy of the current line
     for(j=0;j<height;j++){
         // create an aligned copy
         float *spf = (float*) sp;
