@@ -9,6 +9,7 @@ find_package(Ceres REQUIRED)
 include_directories(${CERES_INCLUDE_DIRS})
 
 # OpenCV
+find_package(Ade QUIET) # Work around linking issue caused by OpenCV4's cmake configuration, at least with the MacPorts release
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 
@@ -23,7 +24,7 @@ include_directories(${OpenMP_C_INCLUDE_DIRS})
 find_package(Eigen3)
 include_directories(${Eigen3_INCLUDE_DIRS})
 
-set(ALL_LIBS ${OpenMP_libomp_LIBRARY} ${OpenCV_LIBS} ${CERES_LIBRARIES} ${Pangolin_LIBRARIES})
+set(ALL_LIBS ${OpenMP_libomp_LIBRARY} ${OpenCV_LIBS} ${CERES_LIBRARIES})
 
 # Pangolin
 if(DEFINED USE_GUI)
