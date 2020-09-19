@@ -19,6 +19,8 @@
 #include "patchgrid.h"
 #include "refine_variational.h"
 
+#include <immintrin.h>
+
 
 using std::cout;
 using std::endl;
@@ -102,8 +104,8 @@ namespace OFC
   op.tv_solverit = tv_solverit_in;
   op.tv_sor = tv_sor_in;
   op.normoutlier_tmpbsq = (v4sf) {op.normoutlier*op.normoutlier, op.normoutlier*op.normoutlier, op.normoutlier*op.normoutlier, op.normoutlier*op.normoutlier};
-  op.normoutlier_tmp2bsq = __builtin_ia32_mulps(op.normoutlier_tmpbsq, op.twos);
-  op.normoutlier_tmp4bsq = __builtin_ia32_mulps(op.normoutlier_tmpbsq, op.fours);
+  op.normoutlier_tmp2bsq = _mm_mul_ps(op.normoutlier_tmpbsq, op.twos);
+  op.normoutlier_tmp4bsq = _mm_mul_ps(op.normoutlier_tmpbsq, op.fours);
 
   
   // Variables for algorithm timings
