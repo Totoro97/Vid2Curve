@@ -21,8 +21,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 include_directories(${OpenMP_C_INCLUDE_DIRS})
 
 # Eigen
-find_package(Eigen3)
-include_directories(${Eigen3_INCLUDE_DIRS})
+find_package(Eigen3 REQUIRED)
+include_directories(${EIGEN3_INCLUDE_DIR})
 
 set(ALL_LIBS ${OpenMP_libomp_LIBRARY} ${OpenCV_LIBS} ${CERES_LIBRARIES})
 
